@@ -10,10 +10,8 @@ public class Main {
 
     public static void main(String[] args) throws IOException, InterruptedException {
         UDPClient client = new UDPClient();
-        client.start();
-
         int userOption;
-        System.out.printf("Usage: 0 - start test; 1 - exit\n");
+        System.out.println("Usage: 0 - start test; 1 - exit");
         do {
             userOption = Integer.parseInt(scanIn.nextLine());
             if (userOption == SELF_OPT)
@@ -22,61 +20,57 @@ public class Main {
     }
 }
 
-class UDPClient extends Thread {
+class UDPClient {
     private static final int PORT = 5555;
     private static final int BUFFER_SIZE = 1000;
-    private static final int PACKAGE_QUAT = 1000;
-    private static final int FIVE_SECONDS = 5000;
-    private static final int START_MSG = 1;
-    private static final int END_MSG = 2;
+    private static final int PACKAGE_QUANT = 1000;
+    private static final int TIMEOUT = 5000;
 
-    protected DatagramSocket socket;
+    private static final int START_MSG = PACKAGE_QUANT + 1;
+    private static final int END_MSG = START_MSG + 1;
+
+    protected final DatagramSocket socket;
     protected DatagramPacket packet;
     protected byte[] buffer;
     protected InetAddress address;
 
     public UDPClient() throws SocketException, UnknownHostException {
-        super("UDP CLIENT THREAD");
-
         buffer = new byte[BUFFER_SIZE];
+        packet = new DatagramPacket(buffer, buffer.length);
         address = InetAddress.getByName("10.211.55.19");
         socket = new DatagramSocket(PORT);
     }
 
-    public void startTesting() throws IOException, InterruptedException{
-        buffer = new byte[buffer.length];
-
-        buffer[0] = START_MSG;
+    protected void sendPackage(int valueToSend) throws IOException{
+        buffer = ByteBuffer.allocate(BUFFER_SIZE).putInt(valueToSend).array();
         packet = new DatagramPacket(buffer, buffer.length, address, PORT);
         socket.send(packet);
-
-        buffer = new byte[buffer.length];
-        packet = new DatagramPacket(buffer, buffer.length, address, PORT);
-
-        for (int i = 0; i < PACKAGE_QUAT; i++) {
-            socket.send(packet);
-        }
-
-        Thread.sleep(FIVE_SECONDS);
-
-        buffer[0] = END_MSG;
-        packet = new DatagramPacket(buffer, buffer.length, address, PORT);
-        socket.send(packet);
-
     }
 
-    @Override
-    public void run() {
-        packet = new DatagramPacket(buffer, buffer.length);
-        while (true) {
-            try {
-                socket.receive(packet);
-                int numberOfPackets = ByteBuffer.wrap(packet.getData()).getInt();
-                System.out.println("Received data: " + Integer.toString(numberOfPackets));
-            } catch (IOException e) {
-                System.err.println(e);
-            }
+    public void startTesting() throws IOException, InterruptedException{
+        sendPackage(START_MSG);
+        System.out.println("\nTest started\n===================");
+
+        Thread.sleep(TIMEOUT);
+        long startTime = System.currentTimeMillis();
+        for (int packIndex = 0; packIndex < PACKAGE_QUANT; packIndex++) {
+            sendPackage(packIndex);
         }
+        long transferringTime = System.currentTimeMillis() - startTime;
+        Thread.sleep(TIMEOUT);
+
+        sendPackage(END_MSG);
+        System.out.println("\nTest finished\nWaiting for results\n===================");
+
+        packet = new DatagramPacket(buffer, buffer.length);
+        socket.receive(packet);
+
+        int numberOfReceivedPackages = ByteBuffer.wrap(packet.getData()).getInt();
+        int lost = PACKAGE_QUANT - numberOfReceivedPackages;
+        String testResult = String.format("Sent: %d\nLost: %d\nPercent of lost: %d%%\nSpeed: %d kbit/s",
+                PACKAGE_QUANT, lost, lost * 100 / PACKAGE_QUANT, numberOfReceivedPackages * 1000 / transferringTime);
+
+        System.out.println(testResult);
     }
 }
 
